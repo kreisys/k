@@ -143,6 +143,7 @@ public class DefinitionParsing {
         def = Definition(def.mainModule(), modules.collect(Collections.toSet()), def.att());
 
         def = Kompile.excludeModulesByTag(excludeModules).apply(def);
+        sw.printIntermediate("Outer parsing [" + def.entryModules().size() + " modules]");
 
         errors = java.util.Collections.synchronizedSet(Sets.newHashSet());
         caches = loadCaches();
