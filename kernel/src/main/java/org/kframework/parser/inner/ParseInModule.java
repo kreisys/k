@@ -17,6 +17,7 @@ import org.kframework.parser.inner.kernel.KSyntax2GrammarStatesFilter;
 import org.kframework.parser.inner.kernel.Parser;
 import org.kframework.parser.inner.kernel.Scanner;
 import org.kframework.parser.outer.Outer;
+import org.kframework.utils.TimingCollector;
 import org.kframework.utils.errorsystem.KEMException;
 import org.kframework.utils.file.FileUtil;
 import scala.Tuple2;
@@ -58,38 +59,29 @@ public class ParseInModule implements Serializable, AutoCloseable {
     private volatile Module parsingModule;
     private volatile Grammar grammar = null;
     private final boolean strict;
-    private final boolean profileRules;
     private final boolean isBison;
-    private final FileUtil files;
+    private final TimingCollector timingCollector;
     public ParseInModule(Module seedModule) {
-        this(seedModule, seedModule, seedModule, seedModule, null, true, false, false, null);
+        this(seedModule, seedModule, seedModule, seedModule, null, true, false, null);
     }
 
-    public ParseInModule(Module seedModule, boolean strict, boolean profileRules, boolean isBison, FileUtil files) {
-        this(seedModule, null, null, null, null, strict, profileRules, isBison, files);
+    public ParseInModule(Module seedModule, boolean strict, boolean isBison, TimingCollector timingCollector) {
+        this(seedModule, null, null, null, null, strict, isBison, timingCollector);
     }
 
-    public ParseInModule(Module seedModule, Scanner scanner, boolean strict, boolean profileRules, boolean isBison, FileUtil files) {
-        this(seedModule, null, null, null, scanner, strict, profileRules, isBison, files);
+    public ParseInModule(Module seedModule, Scanner scanner, boolean strict, boolean isBison, TimingCollector timingCollector) {
+        this(seedModule, null, null, null, scanner, strict, isBison, timingCollector);
     }
 
-    public ParseInModule(Module seedModule, Module extensionModule, Module disambModule, Module parsingModule, Scanner scanner, boolean strict, boolean profileRules, boolean isBison, FileUtil files) {
+    public ParseInModule(Module seedModule, Module extensionModule, Module disambModule, Module parsingModule, Scanner scanner, boolean strict, boolean isBison, TimingCollector timingCollector) {
         this.seedModule = seedModule;
         this.extensionModule = extensionModule;
         this.disambModule = disambModule;
         this.parsingModule = parsingModule;
         this.scanner = scanner;
         this.strict = strict;
-        this.profileRules = profileRules;
         this.isBison = isBison;
-        this.files = files;
-        if (profileRules) {
-            try {
-                timing = new BufferedWriter(new FileWriter(files.resolveTemp("timing" + Thread.currentThread().getId() + ".log"), true));
-            } catch (IOException e) {
-                throw KEMException.internalError("Failed to open timing.log", e);
-            }
-        }
+        this.timingCollector = timingCollector;
     }
 
     /**
@@ -206,8 +198,6 @@ public class ParseInModule implements Serializable, AutoCloseable {
         return new Tuple2<>(parseInfo, result._2());
     }
 
-    private Writer timing;
-
     /**
      * Parse the given input. This function is private because the final disambiguation
      * in {@link AmbFilter} eliminates ambiguities that will be equivalent only after
@@ -296,19 +286,13 @@ public class ParseInModule implements Serializable, AutoCloseable {
 
             return new Tuple2<>(Right.apply(rez3), warn);
         } finally {
-            if (profileRules) {
+            if (timingCollector != null) {
                 long stop = System.currentTimeMillis();
-                try {
-                    Writer t = timing;
-                    synchronized(t) {
-                        long totalTime = stop - start;
-                        long parseTime = endParse - start;
-                        long tiTime = endTypeInf - startTypeInf;
-                        t.write(String.format("%5d %s:%d   parse:%4d typeInf:%4d\n", totalTime, source.source(), startLine, parseTime, tiTime));
-                    }
-                } catch (IOException e) {
-                  throw KEMException.internalError("Could not write to timing.log", e);
-                }
+                long totalTime = stop - start;
+                long parseTime = endParse - start;
+                long tiTime = endTypeInf - startTypeInf;
+                timingCollector.addMessage(String.format("%5d %s:%d   parse:%4d typeInf:%4d", totalTime, source.source(), startLine, parseTime, tiTime),
+                        source.source() + ":" + startLine);
             }
         }
     }
@@ -321,16 +305,6 @@ public class ParseInModule implements Serializable, AutoCloseable {
             inferencer.close();
         }
         inferencers.clear();
-        Writer t = timing;
-        if (t != null) {
-            synchronized(t) {
-                try {
-                    t.close();
-                } catch (IOException e) {
-                    throw KEMException.internalError("Could not close timing.log", e);
-                }
-            }
-        }
     }
 
     public static Term disambiguateForUnparse(Module mod, Term ambiguity) {
