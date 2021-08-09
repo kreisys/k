@@ -214,7 +214,7 @@ We now present our high-level BNF syntax:
   Module       ::= "module" {ModuleId} AttributeSet ImportList SentenceList "endmodule"
 
   AttributeSet ::= "" | "[" Attributes "]"
-  Attributes   ::= Attributes "," {Attribute}
+  Attributes   ::= {Attribute} "," Attributes | {Attribute}
 
   ImportList   ::= "" | Import ImportList
   Import       ::= ImportCmd {ModuleId}
@@ -261,7 +261,8 @@ We can further drill down by sentence type.
   NeIdList                 ::= {Id} | {Id} NeIdList
   Associativity            ::= "left" | "right" | "non-assoc"
 
-  PriorityDeclaration ::= "syntax" "priorities" PriorityList
+  PriorityDeclaration ::= "syntax" PriorityKeyword PriorityList
+  PriorityKeyword     ::= "priorities" | "priority"
   PriorityList        ::= NeIdList ">" PriorityList
                         | NeIdList ">" NeIdList
 
